@@ -275,47 +275,59 @@
             let xml = await zip.file(sheetPath).async("string");
 
             const replaceOrInsert = (cellRef, value) => {
-              const col = cellRef.replace(/[0-9]/g, "");
               const rowNum = cellRef.replace(/[A-Z]/g, "");
+
               const cellRegex = new RegExp(
                 `<c([^>]*)r="${cellRef}"([^>]*)>([\\s\\S]*?)<v>([\\s\\S]*?)</v>([\\s\\S]*?)</c>`,
                 "i"
               );
+
+              const cellNoVRegex = new RegExp(
+                `<c([^>]*)r="${cellRef}"([^>]*)>([\\s\\S]*?)</c>`,
+                "i"
+              );
+
               const rowRegex = new RegExp(
                 `<row[^>]*r="${rowNum}"[^>]*>([\\s\\S]*?)</row>`,
                 "i"
               );
 
               if (cellRegex.test(xml)) {
+                // Cell exists and has <v> — replace only value
                 xml = xml.replace(
                   cellRegex,
                   (_, pre, post, beforeV, oldVal, afterV) => {
                     return `<c${pre}r="${cellRef}"${post}>${beforeV}<v>${value}</v>${afterV}</c>`;
                   }
                 );
+              } else if (cellNoVRegex.test(xml)) {
+                // Cell exists but no <v> — add <v> without touching format
+                xml = xml.replace(cellNoVRegex, (_, pre, post, inner) => {
+                  return `<c${pre}r="${cellRef}"${post}>${inner}<v>${value}</v></c>`;
+                });
               } else if (rowRegex.test(xml)) {
-                xml = xml.replace(rowRegex, (match, inner) =>
-                  match.replace(
+                // Row exists but cell doesn't — insert cell with default format
+                xml = xml.replace(rowRegex, (match, inner) => {
+                  return match.replace(
                     inner,
                     inner + `<c r="${cellRef}" t="str"><v>${value}</v></c>`
-                  )
-                );
+                  );
+                });
               } else {
+                // Row and cell don't exist — create entire row
                 const rowXML = `<row r="${rowNum}"><c r="${cellRef}" t="str"><v>${value}</v></c></row>`;
                 xml = xml.replace(/<\/sheetData>/, `${rowXML}</sheetData>`);
               }
             };
 
-            xml = xml.replace(formattedCert);
-            xml = xml.replace(owner);
-            xml = xml.replace(makeModel);
+            replaceOrInsert("H7", ": " + formattedCert);
+            replaceOrInsert("F14", ": " + owner);
+            replaceOrInsert("F15", ": " + makeModel);
 
-            xml = xml.replace(cr);
-
-            xml = xml.replace(mv);
-
-            xml = xml.replace(oldPlate);
-            xml = xml.replace(newPlate);
+            replaceOrInsert("F16", ": " + cr);
+            replaceOrInsert("F17", ": " + mv);
+            replaceOrInsert("F18", ": " + oldPlate);
+            replaceOrInsert("F19", ": " + newPlate);
 
             const issuedDate = (row[8] || " ").replace(/,\s*/, " ");
             const issuedTextXml = `
