@@ -329,7 +329,10 @@
             replaceOrInsert("F18", ": " + oldPlate);
             replaceOrInsert("F19", ": " + newPlate);
 
-            const issuedDate = (row[8] || " ").replace(/,\s*/, " ");
+            const issuedDate = formatDateUSMDY(row[8] || " ").replace(
+              /,\s*/,
+              " "
+            );
             const issuedTextXml = `
   <r>
     <rPr><rFont val="Times New Roman"/><sz val="12"/></rPr>
@@ -372,6 +375,77 @@
 
       function makeRichTextCell(cellRef, richTextXml) {
         return `<c r="${cellRef}" t="inlineStr"><is>${richTextXml}</is></c>`;
+      }
+      function formatDateUSMDY(dateInput) {
+        if (!dateInput) return " ";
+
+        let dateStr = "";
+
+        if (typeof dateInput === "string") {
+          dateStr = dateInput.trim();
+        } else if (dateInput instanceof Date) {
+          // Convert Date object to "M/D/YYYY"
+          dateStr =
+            dateInput.getMonth() +
+            1 +
+            "/" +
+            dateInput.getDate() +
+            "/" +
+            dateInput.getFullYear();
+        } else if (typeof dateInput === "number") {
+          // Excel date serial number: convert to JS Date
+          // Excel's epoch starts at 1899-12-31, with day 1 = 1900-01-01
+          const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899 (because Excel leap year bug)
+          const jsDate = new Date(excelEpoch.getTime() + dateInput * 86400000);
+          dateStr =
+            jsDate.getMonth() +
+            1 +
+            "/" +
+            jsDate.getDate() +
+            "/" +
+            jsDate.getFullYear();
+        } else {
+          // unknown type, fallback:
+          return String(dateInput);
+        }
+
+        const parts = dateStr.split("/");
+        if (parts.length !== 3) return dateStr;
+
+        const month = parseInt(parts[0], 10);
+        const day = parseInt(parts[1], 10);
+        const year = parseInt(parts[2], 10);
+
+        if (
+          isNaN(month) ||
+          isNaN(day) ||
+          isNaN(year) ||
+          month < 1 ||
+          month > 12 ||
+          day < 1 ||
+          day > 31
+        ) {
+          return dateStr;
+        }
+
+        const monthNames = [
+          "January",
+          "February",
+          "March",
+          "April",
+          "May",
+          "June",
+          "July",
+          "August",
+          "September",
+          "October",
+          "November",
+          "December",
+        ];
+
+        const dayStr = day < 10 ? `0${day}` : `${day}`;
+
+        return `${dayStr} ${monthNames[month - 1]}, ${year}`;
       }
     </script>
   </body>
