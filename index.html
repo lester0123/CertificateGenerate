@@ -306,13 +306,16 @@
               }
             };
 
-            replaceOrInsert("H7", formattedCert);
-            replaceOrInsert("F14", owner);
-            replaceOrInsert("F15", makeModel);
-            replaceOrInsert("F16", cr);
-            replaceOrInsert("F17", mv);
-            replaceOrInsert("F18", oldPlate);
-            replaceOrInsert("F19", newPlate);
+            xml = xml.replace(formattedCert);
+            xml = xml.replace(owner);
+            xml = xml.replace(makeModel);
+
+            xml = xml.replace(cr);
+
+            xml = xml.replace(mv);
+
+            xml = xml.replace(oldPlate);
+            xml = xml.replace(newPlate);
 
             const issuedDate = (row[8] || " ").replace(/,\s*/, " ");
             const issuedTextXml = `
