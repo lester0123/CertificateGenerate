@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PLATE CERTIFICATE</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f0f6ff;
+        padding: 20px;
+        color: #002f6c;
+      }
+
+      h1 {
+        color: #002f6c;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .upload-section {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+
+      input[type="file"] {
+        padding: 10px;
+        background-color: #004aad;
+        color: white;
+        border: none;
+        border-radius: 5px;
+      }
+
+      #downloadBtn {
+        padding: 10px 20px;
+        background-color: #004aad;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background-color: white;
+        box-shadow: 0 0 10px rgba(0, 74, 173, 0.2);
+      }
+
+      thead {
+        background-color: #004aad;
+        color: white;
+      }
+
+      th,
+      td {
+        padding: 10px;
+        border: 1px solid #ccc;
+        text-align: center;
+      }
+
+      .filter-input {
+        width: 100%;
+        padding: 5px;
+        border: 1px solid #004aad;
+        border-radius: 4px;
+        margin-bottom: 5px;
+      }
+
+      #tableContainer {
+        margin-top: 20px;
+      }
+
+      #swiftAlert {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #004aad;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        font-weight: bold;
+        z-index: 1000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease-in-out;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Plate Certificate Generator</h1>
+
+    <div class="upload-section">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <label for="templateFile"><strong>Upload Template File</strong></label>
+        <input type="file" id="templateFile" accept=".xlsx" />
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <label for="excelFile"><strong>Upload Data File</strong></label>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" />
+      </div>
+
+      <button id="downloadBtn" style="display: none">
+        Download Certificates
+      </button>
+    </div>
+
+    <div id="tableContainer"></div>
+    <div id="swiftAlert"></div>
+
+    <script>
+      function showSwiftAlert(message, duration = 3000) {
+        const alertBox = document.getElementById("swiftAlert");
+        alertBox.textContent = message;
+        alertBox.style.opacity = "1";
+        alertBox.style.pointerEvents = "auto";
+        setTimeout(() => {
+          alertBox.style.opacity = "0";
+          alertBox.style.pointerEvents = "none";
+        }, duration);
+      }
+
+      let userTemplateBinary = null;
+      let extractedData = [];
+
+      document
+        .getElementById("templateFile")
+        .addEventListener("change", function (e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            userTemplateBinary = e.target.result;
+            showSwiftAlert("✅ Template loaded");
+          };
+          reader.readAsArrayBuffer(file);
+        });
+
+      document
+        .getElementById("excelFile")
+        .addEventListener("change", function (e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: "array" });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            extractedData = json;
+            renderTable(json);
+            document.getElementById("downloadBtn").style.display =
+              "inline-block";
+          };
+          reader.readAsArrayBuffer(file);
+        });
+
+      function renderTable(data) {
+        const container = document.getElementById("tableContainer");
+        container.innerHTML = "";
+        if (data.length === 0) return;
+
+        const columns = [
+          "Certificate Number",
+          "Registered Owner",
+          "Vehicle Make",
+          "Vehicle Model",
+          "CR Number",
+          "MV File No.",
+          "Old Plate Number",
+          "New Plate Number",
+          "Issued Date",
+        ];
+
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const filterRow = document.createElement("tr");
+        const headerRow = document.createElement("tr");
+
+        columns.forEach((col, index) => {
+          const filterTh = document.createElement("th");
+          const filterInput = document.createElement("input");
+          filterInput.className = "filter-input";
+          filterInput.placeholder = `Filter ${col}`;
+          filterInput.dataset.col = index;
+          filterInput.addEventListener("input", filterTable);
+          filterTh.appendChild(filterInput);
+          filterRow.appendChild(filterTh);
+
+          const headerTh = document.createElement("th");
+          headerTh.textContent = col;
+          headerRow.appendChild(headerTh);
+        });
+
+        thead.appendChild(filterRow);
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+
+        for (let i = 1; i < data.length; i++) {
+          const row = document.createElement("tr");
+          for (let j = 0; j < columns.length; j++) {
+            const cell = document.createElement("td");
+            cell.textContent = data[i][j] || "";
+            row.appendChild(cell);
+          }
+          tbody.appendChild(row);
+        }
+
+        table.appendChild(tbody);
+        container.appendChild(table);
+      }
+
+      function filterTable(e) {
+        const input = e.target;
+        const colIndex = input.dataset.col;
+        const filterValue = input.value.toLowerCase();
+        const table = input.closest("table");
+        const tbody = table.querySelector("tbody");
+        const rows = tbody.querySelectorAll("tr");
+
+        rows.forEach((row) => {
+          const cell = row.cells[colIndex];
+          const cellValue = cell.textContent.toLowerCase();
+          row.style.display = cellValue.includes(filterValue) ? "" : "none";
+        });
+      }
+
+      document
+        .getElementById("downloadBtn")
+        .addEventListener("click", async function () {
+          if (!userTemplateBinary) {
+            showSwiftAlert(
+              "⚠️ Please upload the certificate template file first."
+            );
+            return;
+          }
+
+          const delay = (ms) =>
+            new Promise((resolve) => setTimeout(resolve, ms));
+          const batchSize = 10;
+
+          let downloadCount = 0;
+
+          for (let i = 1; i < extractedData.length; i++) {
+            const row = extractedData[i];
+            const certNumber = String(row[0] || "").padStart(10, "0");
+
+            if (!certNumber.trim() || certNumber === "0000000000") continue;
+
+            const owner = row[1] || "";
+            const make = row[2] || "";
+            const model = row[3] || "";
+            const cr = row[4] || "";
+            const mv = row[5] || "";
+            const oldPlate = row[6] || "";
+            const newPlate = row[7] || "";
+
+            const formattedCert = `No. ${certNumber}`;
+            const makeModel = `${make} / ${model}`;
+
+            const zip = await JSZip.loadAsync(userTemplateBinary);
+            const sheetPath = "xl/worksheets/sheet1.xml";
+            let xml = await zip.file(sheetPath).async("string");
+
+            const replaceOrInsert = (cellRef, value) => {
+              const col = cellRef.replace(/[0-9]/g, "");
+              const rowNum = cellRef.replace(/[A-Z]/g, "");
+              const cellRegex = new RegExp(
+                `<c([^>]*)r="${cellRef}"([^>]*)>([\\s\\S]*?)<v>([\\s\\S]*?)</v>([\\s\\S]*?)</c>`,
+                "i"
+              );
+              const rowRegex = new RegExp(
+                `<row[^>]*r="${rowNum}"[^>]*>([\\s\\S]*?)</row>`,
+                "i"
+              );
+
+              if (cellRegex.test(xml)) {
+                xml = xml.replace(
+                  cellRegex,
+                  (_, pre, post, beforeV, oldVal, afterV) => {
+                    return `<c${pre}r="${cellRef}"${post}>${beforeV}<v>${value}</v>${afterV}</c>`;
+                  }
+                );
+              } else if (rowRegex.test(xml)) {
+                xml = xml.replace(rowRegex, (match, inner) =>
+                  match.replace(
+                    inner,
+                    inner + `<c r="${cellRef}" t="str"><v>${value}</v></c>`
+                  )
+                );
+              } else {
+                const rowXML = `<row r="${rowNum}"><c r="${cellRef}" t="str"><v>${value}</v></c></row>`;
+                xml = xml.replace(/<\/sheetData>/, `${rowXML}</sheetData>`);
+              }
+            };
+
+            replaceOrInsert("H7", formattedCert);
+            replaceOrInsert("F14", owner);
+            replaceOrInsert("F15", makeModel);
+            replaceOrInsert("F16", cr);
+            replaceOrInsert("F17", mv);
+            replaceOrInsert("F18", oldPlate);
+            replaceOrInsert("F19", newPlate);
+
+            const issuedDate = (row[8] || " ").replace(/,\s*/, " ");
+            const issuedTextXml = `
+  <r>
+    <rPr><rFont val="Times New Roman"/><sz val="12"/></rPr>
+    <t xml:space="preserve">Issued this </t>
+  </r>
+  <r>
+    <rPr><b/><u/><rFont val="Times New Roman"/><sz val="12"/></rPr>
+    <t xml:space="preserve">${issuedDate}</t>
+  </r>
+  <r>
+    <rPr><rFont val="Times New Roman"/><sz val="12"/></rPr>
+    <t xml:space="preserve"> at the LTO Dasmariñas District Office.</t>
+  </r>
+`.trim();
+
+            const issuedCellXml = makeRichTextCell("B31", issuedTextXml);
+            xml = xml.replace(
+              /<c[^>]*r="B31"[^>]*>[\s\S]*?<\/c>/i,
+              issuedCellXml
+            );
+
+            zip.file(sheetPath, xml);
+            const blob = await zip.generateAsync({ type: "blob" });
+
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `Certificate_${certNumber}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            downloadCount++;
+            if (downloadCount % batchSize === 0) {
+              await delay(2000);
+            }
+          }
+
+          showSwiftAlert("✅ All certificates generated.");
+        });
+
+      function makeRichTextCell(cellRef, richTextXml) {
+        return `<c r="${cellRef}" t="inlineStr"><is>${richTextXml}</is></c>`;
+      }
+    </script>
+  </body>
+</html>
